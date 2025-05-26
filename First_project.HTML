@@ -1,0 +1,2166 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>WARP Density Building Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+  <style>
+    :root {
+      --warp-yellow: #FFD700;
+      --warp-navy: #000000;
+      --warp-dark: #000000;
+      --primary-color: #FFFFFF;
+      --primary-dark: #E8E9EA;
+      --success-color: #00C851;
+      --warning-color: #FF8800;
+      --danger-color: #FF4444;
+      --bg-primary: #000000;
+      --bg-secondary: #000000;
+      --bg-tertiary: #000000;
+      --text-primary: #FFFFFF;
+      --text-secondary: #E8E9EA;
+      --text-muted: #9FA0A3;
+      --border-color: #333333;
+      --shadow: 0 2px 8px 0 rgb(0 0 0 / 0.9), 0 2px 4px -2px rgb(0 0 0 / 0.8);
+      --shadow-lg: 0 12px 20px -6px rgb(0 0 0 / 0.8), 0 6px 8px -6px rgb(0 0 0 / 0.6);
+      --gradient-primary: linear-gradient(135deg, #000000 0%, #333333 100%);
+      --gradient-secondary: linear-gradient(135deg, #000000 0%, #111111 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .header {
+      background: var(--bg-primary);
+      color: white;
+      padding: 1rem 2rem;
+      box-shadow: var(--shadow);
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .warp-logo {
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      color: var(--warp-yellow);
+      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      letter-spacing: -0.025em;
+      margin: 0;
+      color: var(--text-primary);
+    }
+
+    .header-subtitle {
+      display: none;
+    }
+
+    .main-container {
+      display: flex;
+      height: calc(100vh - 70px);
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .main-container.sidebar-hidden {
+      padding-left: 0;
+    }
+
+    .main-container.sidebar-hidden .map-container {
+      width: 100%;
+    }
+
+    .sidebar {
+      width: 440px;
+      background: var(--bg-primary);
+      border-right: 2px solid var(--border-color);
+      overflow-y: auto;
+      padding: 2.5rem;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar.hidden {
+      transform: translateX(-100%);
+    }
+
+    .sidebar-toggle {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: var(--text-primary);
+      color: var(--bg-primary);
+      border: none;
+      padding: 0.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 100;
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-toggle:hover {
+      background: var(--primary-dark);
+      transform: scale(1.05);
+    }
+
+    .sidebar-show-btn {
+      position: fixed;
+      left: 1rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--text-primary);
+      color: var(--bg-primary);
+      border: none;
+      padding: 1rem 0.75rem;
+      border-radius: 0 12px 12px 0;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      z-index: 1001;
+      transition: all 0.3s ease;
+      box-shadow: var(--shadow-lg);
+      display: none;
+      border-left: 3px solid var(--bg-primary);
+    }
+
+    .sidebar-show-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-50%) translateX(8px);
+      box-shadow: 0 8px 25px rgba(255, 255, 255, 0.4);
+    }
+
+    .sidebar-show-btn.visible {
+      display: block;
+    }
+
+    .sidebar::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .map-container {
+      flex: 1;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    .section {
+      margin-bottom: 2.5rem;
+      padding: 2rem;
+      background: var(--bg-primary);
+      border-radius: 16px;
+      border: 2px solid var(--border-color);
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--text-primary) 0%, transparent 100%);
+    }
+
+    .section h3 {
+      color: var(--text-primary);
+      margin-bottom: 2rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      letter-spacing: -0.025em;
+      text-transform: uppercase;
+      font-size: 0.95rem;
+    }
+
+    .section h3 i {
+      color: var(--text-primary);
+      font-size: 1.2rem;
+    }
+
+    .upload-area {
+      border: 2px dashed var(--border-color);
+      border-radius: 16px;
+      padding: 2rem;
+      text-align: center;
+      background: var(--bg-primary);
+      cursor: pointer;
+      margin: 1.5rem 0;
+      transition: all 0.4s ease;
+      position: relative;
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    .upload-area::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.1) 50%, transparent 60%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .upload-area:hover::before {
+      opacity: 1;
+    }
+
+    .upload-area:hover {
+      border-color: var(--text-primary);
+      background: var(--bg-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 255, 255, 0.15);
+    }
+
+    .upload-area.dragover {
+      border-color: var(--text-primary);
+      background: var(--bg-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 255, 255, 0.25);
+    }
+
+    .upload-area i {
+      color: var(--text-primary);
+      font-size: 1.2rem;
+      margin-right: 0.5rem;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .input-group {
+      margin: 1.5rem 0;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 1rem 1.25rem;
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      font-size: 13px;
+      transition: all 0.3s ease;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: var(--text-primary);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+      background: var(--bg-primary);
+    }
+
+    .btn {
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--primary-dark) 100%);
+      color: var(--bg-primary);
+      border: none;
+      padding: 1rem 2rem;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      margin: 0.5rem 0.5rem 0.5rem 0;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: var(--shadow-lg);
+      letter-spacing: -0.025em;
+      text-transform: uppercase;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .btn:hover::before {
+      left: 100%;
+    }
+
+    .btn:hover {
+      background: linear-gradient(135deg, #F0F0F0 0%, var(--text-primary) 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, var(--success-color) 0%, #00A640 100%);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: linear-gradient(135deg, #00E557 0%, var(--success-color) 100%);
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, var(--warning-color) 0%, #E67700 100%);
+      color: white;
+    }
+
+    .btn-warning:hover {
+      background: linear-gradient(135deg, #FF9900 0%, var(--warning-color) 100%);
+    }
+
+    .btn-large {
+      padding: 1rem 2rem;
+      font-size: 14px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .file-status {
+      font-size: 11px;
+      color: var(--success-color);
+      margin-top: 0.5rem;
+      display: none;
+    }
+
+    /* Bottom Panel Styles */
+    .bottom-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-primary);
+      border-top: 2px solid var(--border-color);
+      box-shadow: 0 -4px 6px -1px rgb(0 0 0 / 0.3);
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+      display: none;
+    }
+
+    .bottom-panel.show {
+      display: block;
+      transform: translateY(0);
+    }
+
+    .bottom-panel.minimized {
+      transform: translateY(calc(100% - 60px));
+    }
+
+    .panel-header {
+      background: var(--gradient-primary);
+      color: white;
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .panel-title {
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .panel-controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .panel-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 12px;
+    }
+
+    .panel-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .panel-content {
+      padding: 1.5rem;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .opportunities-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 11px;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid var(--border-color);
+    }
+
+    .opportunities-table th {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 0.75rem;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .opportunities-table td {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+
+    .opportunities-table tr {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .opportunities-table tr:hover {
+      background: #111111;
+      transform: translateX(2px);
+    }
+
+    .opportunities-table tr.selected {
+      background: rgba(255, 255, 255, 0.1);
+      border-left: 4px solid var(--primary-color);
+    }
+
+    .lane-type-badge {
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+    }
+
+    .lane-type-historical {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
+    .lane-type-ltl {
+      background: #8b5cf6;
+      color: #ffffff;
+    }
+
+    .lane-type-dedicated {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      border: 3px solid var(--border-color);
+      border-top: 3px solid var(--text-primary);
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      background: var(--bg-primary);
+      border-radius: 8px;
+      border: 2px solid var(--border-color);
+      font-size: 12px;
+    }
+
+    .step-container {
+      display: none;
+    }
+
+    .step-container.active {
+      display: block;
+    }
+
+    /* Fix Google Maps InfoWindow styling for dark theme */
+    .gm-style .gm-style-iw-c {
+      background-color: var(--bg-primary) !important;
+      color: var(--text-primary) !important;
+    }
+
+    .gm-style .gm-style-iw-d {
+      color: var(--text-primary) !important;
+    }
+
+    .gm-style .gm-style-iw-t::after {
+      background: var(--bg-primary) !important;
+    }
+
+    .upload-progress {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: var(--bg-primary);
+      border-radius: 8px;
+      border: 2px solid var(--border-color);
+    }
+
+    .progress-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      font-size: 11px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .progress-item:last-child {
+      border-bottom: none;
+    }
+
+    .progress-status {
+      font-weight: 600;
+    }
+
+    .progress-status.complete {
+      color: var(--success-color);
+    }
+
+    .progress-status.pending {
+      color: var(--text-muted);
+    }
+
+    small {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .selected-lane-info {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border: 2px solid var(--border-color);
+    }
+
+    .lane-details {
+      background: var(--bg-primary);
+      border-radius: 16px;
+      padding: 2rem;
+      border: 2px solid var(--border-color);
+      box-shadow: var(--shadow-lg);
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .lane-details::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--warp-yellow) 0%, transparent 100%);
+    }
+
+    .lane-details h3 {
+      color: var(--warp-yellow);
+      margin-bottom: 1.5rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .lane-detail-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 13px;
+    }
+
+    .lane-detail-item:last-child {
+      border-bottom: none;
+    }
+
+    .lane-detail-label {
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .lane-detail-value {
+      color: var(--text-primary);
+      font-weight: 500;
+      text-align: right;
+      max-width: 60%;
+    }
+
+    .lane-route {
+      background: var(--bg-primary);
+      padding: 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--warp-yellow);
+      text-align: center;
+      border: 2px solid var(--border-color);
+    }
+
+    .clear-lane-btn {
+      background: var(--danger-color);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      width: 100%;
+      margin-top: 1rem;
+      transition: all 0.2s ease;
+    }
+
+    .clear-lane-btn:hover {
+      background: #dc2626;
+    }
+
+    .clear-selections-btn {
+      background: linear-gradient(135deg, var(--danger-color) 0%, #CC3333 100%);
+      color: white;
+      margin-bottom: 1rem;
+    }
+
+    .clear-selections-btn:hover {
+      background: linear-gradient(135deg, #FF5555 0%, var(--danger-color) 100%);
+    }
+
+    /* Lane Details Panel */
+    .lane-details-panel {
+      position: fixed;
+      top: 70px;
+      right: 20px;
+      width: 400px;
+      max-height: calc(100vh - 100px);
+      background: var(--bg-primary);
+      border: 2px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      overflow: hidden;
+    }
+
+    .lane-details-panel.show {
+      transform: translateX(0);
+    }
+
+    .lane-details-header {
+      background: var(--gradient-primary);
+      color: white;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .lane-details-title {
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .lane-details-close {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .lane-details-close:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .lane-details-content {
+      padding: 1.5rem;
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+
+    .lane-detail-card {
+      background: var(--bg-primary);
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .lane-detail-card:last-child {
+      margin-bottom: 0;
+    }
+
+    .lane-detail-card h4 {
+      color: var(--text-primary);
+      margin-bottom: 1rem;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-content">
+    <div class="warp-logo">WARP</div>
+    <h1><i class="fas fa-map-marked-alt"></i> Density Building Map</h1>
+  </div>
+</div>
+
+<div class="main-container">
+  <div class="sidebar" id="sidebar">
+    
+    <!-- Step 1: Data Upload -->
+    <div class="step-container active" id="step-upload">
+      <div class="section">
+        <h3><i class="fas fa-upload"></i> Data Upload - Step 1 of 2</h3>
+        
+        <div class="upload-area" id="facilities-upload-area">
+          <input type="file" id="facilities-upload" class="file-input" accept=".csv" />
+          <div><i class="fas fa-building"></i> Upload Customer Facilities</div>
+          <small>Your geocoded facilities CSV file</small>
+          <div class="file-status" id="facilities-status">Choose file...</div>
+        </div>
+        
+        <div class="upload-area" id="historical-upload-area">
+          <input type="file" id="historical-upload" class="file-input" accept=".csv" />
+          <div><i class="fas fa-history"></i> Upload Historical Lanes</div>
+          <small>Your geocoded historical lanes CSV file</small>
+          <div class="file-status" id="historical-status">Choose file...</div>
+        </div>
+        
+        <div class="upload-area" id="dedicated-upload-area">
+          <input type="file" id="dedicated-upload" class="file-input" accept=".csv" />
+          <div><i class="fas fa-truck"></i> Upload Dedicated Lanes</div>
+          <small>Your geocoded dedicated lanes CSV file</small>
+          <div class="file-status" id="dedicated-status">Choose file...</div>
+        </div>
+        
+        <div class="upload-area" id="ltl-upload-area">
+          <input type="file" id="ltl-upload" class="file-input" accept=".csv" />
+          <div><i class="fas fa-shipping-fast"></i> Upload WARP LTL Lanes</div>
+          <small>Your geocoded LTL lanes CSV file</small>
+          <div class="file-status" id="ltl-status">Choose file...</div>
+        </div>
+        
+        <div class="upload-area" id="crossdocks-upload-area">
+          <input type="file" id="crossdocks-upload" class="file-input" accept=".csv" />
+          <div><i class="fas fa-warehouse"></i> Upload WARP Crossdocks</div>
+          <small>Your geocoded crossdocks CSV file</small>
+          <div class="file-status" id="crossdocks-status">Choose file...</div>
+        </div>
+        
+        <button class="btn btn-success btn-large" onclick="loadSampleData()">
+          <i class="fas fa-database"></i> Load Demo Data
+        </button>
+
+        <div class="upload-progress">
+          <div class="progress-item">
+            <span>Customer Facilities</span>
+            <span class="progress-status pending" id="facilities-progress">Optional</span>
+          </div>
+          <div class="progress-item">
+            <span>Historical Lanes <span style="color: var(--danger-color);">*</span></span>
+            <span class="progress-status pending" id="historical-progress">Required</span>
+          </div>
+          <div class="progress-item">
+            <span>Dedicated Lanes <span style="color: var(--danger-color);">*</span></span>
+            <span class="progress-status pending" id="dedicated-progress">Required</span>
+          </div>
+          <div class="progress-item">
+            <span>LTL Lanes <span style="color: var(--danger-color);">*</span></span>
+            <span class="progress-status pending" id="ltl-progress">Required</span>
+          </div>
+          <div class="progress-item">
+            <span>Crossdocks <span style="color: var(--danger-color);">*</span></span>
+            <span class="progress-status pending" id="crossdocks-progress">Required</span>
+          </div>
+        </div>
+        
+        <button class="btn btn-large" id="proceed-btn" onclick="proceedToAnalysis()" style="display: none; margin-top: 1rem;">
+          <i class="fas fa-arrow-right"></i> Proceed to Route Analysis
+        </button>
+        
+        <div style="margin-top: 2rem; padding: 1.5rem; background: var(--bg-primary); border-radius: 16px; font-size: 12px; border: 2px solid var(--border-color); box-shadow: var(--shadow);">
+          <strong style="color: var(--text-primary);">💡 Requirements:</strong> Upload the 4 required files to proceed to analysis.<br>
+          <small style="color: var(--text-muted);"><span style="color: var(--danger-color);">*</span> Required files must include latitude and longitude coordinates. Customer facilities are optional.</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Route Analysis -->
+    <div class="step-container" id="step-analysis">
+      <div class="section">
+        <h3><i class="fas fa-search"></i> Route Analysis - Step 2 of 2</h3>
+        
+        <div class="input-group">
+          <label for="pickup-input"><i class="fas fa-map-marker-alt"></i> Pickup Location:</label>
+          <input type="text" id="pickup-input" placeholder="Enter city, state or address">
+        </div>
+        
+        <div class="input-group">
+          <label for="dropoff-input"><i class="fas fa-flag-checkered"></i> Dropoff Location:</label>
+          <input type="text" id="dropoff-input" placeholder="Enter city, state or address">
+        </div>
+        
+        <button class="btn btn-large" onclick="findOpportunities()">
+          <i class="fas fa-analytics"></i> Analyze Route Density
+        </button>
+
+        <button class="btn btn-warning btn-large" onclick="goBackToUpload()" style="margin-top: 0.5rem;">
+          <i class="fas fa-arrow-left"></i> Back to Upload
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="map-container">
+    <div id="map"></div>
+  </div>
+</div>
+
+<!-- Lane Details Top Panel -->
+<div class="lane-details-panel" id="lane-details-panel">
+  <div class="lane-details-header">
+    <div class="lane-details-title">
+      <i class="fas fa-route"></i>
+      <span id="lane-title">Lane Details</span>
+    </div>
+    <button class="lane-details-close" onclick="clearLaneDetails()">
+      <i class="fas fa-times"></i> Close
+    </button>
+  </div>
+  <div class="lane-details-content" id="lane-details-content">
+    <!-- Lane details will be populated here -->
+  </div>
+</div>
+
+<!-- Bottom Panel for Results -->
+<div class="bottom-panel" id="bottom-panel">
+  <div class="panel-header" onclick="togglePanel()">
+    <div class="panel-title">
+      <i class="fas fa-analytics"></i>
+      <span>Density Building Opportunities</span>
+      <span id="results-count" style="font-size: 11px; opacity: 0.8;"></span>
+    </div>
+    <div class="panel-controls">
+      <button class="panel-btn" onclick="event.stopPropagation(); clearAllSelections()" title="Clear Selections">
+        <i class="fas fa-times"></i>
+      </button>
+      <button class="panel-btn" onclick="event.stopPropagation(); togglePanel()" id="toggle-btn">
+        <i class="fas fa-chevron-up"></i>
+      </button>
+      <button class="panel-btn" onclick="event.stopPropagation(); closePanel()" title="Close">
+        <i class="fas fa-window-close"></i>
+      </button>
+    </div>
+  </div>
+  <div class="panel-content" id="panel-content">
+    <!-- Results will be populated here -->
+  </div>
+</div>
+
+<script>
+// Configuration
+const CONFIG = {
+  GOOGLE_MAPS_API_KEY: 'AIzaSyDn63vT2is3wsAwAKefNM3tsUWVnYQFVw8'
+};
+
+// Global Variables
+let map;
+let geocoder;
+let customerFacilities = [];
+let historicalLanes = [];
+let warpLtlLanes = [];
+let dedicatedLanes = [];
+let warpCrossdocks = [];
+let markers = [];
+let pickupAutocomplete;
+let dropoffAutocomplete;
+let currentSearchMarkers = [];
+let currentSearchLines = [];
+let selectedLaneMarkers = [];
+let selectedLaneLines = [];
+let currentOpportunities = [];
+let selectedLanes = new Set();
+let isPanelMinimized = false;
+let filesUploaded = {
+  facilities: false, // Optional
+  historical: false, // Required
+  dedicated: false,  // Required
+  ltl: false,       // Required
+  crossdocks: false // Required
+};
+
+// Sample data for testing
+const sampleCustomerFacilities = [
+  {
+    Customer_Name: "Amazon",
+    Facility_Type: "FC",
+    Name: "LAX9",
+    Address: "18700 S Alameda St, Carson, CA 90746",
+    Latitude: 33.8303,
+    Longitude: -118.2437
+  },
+  {
+    Customer_Name: "Amazon",
+    Facility_Type: "DS",
+    Name: "DLA5",
+    Address: "1650 Merchandise Way, Dallas, TX 75201",
+    Latitude: 32.7767,
+    Longitude: -96.7970
+  },
+  {
+    Customer_Name: "Walmart",
+    Facility_Type: "DC",
+    Name: "DC6095",
+    Address: "2405 Vantage Dr, Arlington, TX 76006",
+    Latitude: 32.7081,
+    Longitude: -97.0898
+  }
+];
+
+const sampleHistoricalLanes = [
+  {
+    "Customer Name": "Amazon",
+    "Code": "AMZ001",
+    "Pickup City": "Los Angeles",
+    "Pickup State": "CA",
+    "Pickup_Latitude": 34.0522,
+    "Pickup_Longitude": -118.2437,
+    "Dropoff City": "Dallas",
+    "Dropoff State": "TX",
+    "Dropoff_Latitude": 32.7767,
+    "Dropoff_Longitude": -96.7970,
+    "Mode": "FTL",
+    "Equipment Type": "53' Dry Van"
+  },
+  {
+    "Customer Name": "Walmart",
+    "Code": "WMT002",
+    "Pickup City": "Chicago",
+    "Pickup State": "IL",
+    "Pickup_Latitude": 41.8781,
+    "Pickup_Longitude": -87.6298,
+    "Dropoff City": "Atlanta",
+    "Dropoff State": "GA",
+    "Dropoff_Latitude": 33.7490,
+    "Dropoff_Longitude": -84.3880,
+    "Mode": "LTL",
+    "Equipment Type": "Standard"
+  }
+];
+
+const sampleWarpLtlLanes = [
+  {
+    "Lane_Code": "LAX-DFW",
+    "Origin_City": "Los Angeles",
+    "Origin_State": "CA",
+    "Origin_Latitude": 34.0522,
+    "Origin_Longitude": -118.2437,
+    "Destination_City": "Dallas",
+    "Destination_State": "TX",
+    "Destination_Latitude": 32.7767,
+    "Destination_Longitude": -96.7970
+  },
+  {
+    "Lane_Code": "ORD-ATL",
+    "Origin_City": "Chicago",
+    "Origin_State": "IL",
+    "Origin_Latitude": 41.8781,
+    "Origin_Longitude": -87.6298,
+    "Destination_City": "Atlanta",
+    "Destination_State": "GA",
+    "Destination_Latitude": 33.7490,
+    "Destination_Longitude": -84.3880
+  }
+];
+
+const sampleDedicatedLanes = [
+  {
+    "Lane_ID": "DED001",
+    "Route_Description": "Los Angeles, CA to Phoenix, AZ",
+    "Pickup_Latitude": 34.0522,
+    "Pickup_Longitude": -118.2437,
+    "Dropoff_Latitude": 33.4484,
+    "Dropoff_Longitude": -112.0740
+  },
+  {
+    "Lane_ID": "DED002",
+    "Route_Description": "Houston, TX to New Orleans, LA",
+    "Pickup_Latitude": 29.7604,
+    "Pickup_Longitude": -95.3698,
+    "Dropoff_Latitude": 29.9511,
+    "Dropoff_Longitude": -90.0715
+  }
+];
+
+const sampleWarpCrossdocks = [
+  {
+    name: "WARP Los Angeles Crossdock",
+    type: "Regional Hub",
+    address: "1234 Industrial Blvd",
+    city: "Los Angeles",
+    state: "CA",
+    zipcode: "90021",
+    latitude: 34.0522,
+    longitude: -118.2437
+  },
+  {
+    name: "WARP Dallas Crossdock",
+    type: "Distribution Center",
+    address: "5678 Commerce St",
+    city: "Dallas",
+    state: "TX",
+    zipcode: "75201",
+    latitude: 32.7767,
+    longitude: -96.7970
+  }
+];
+
+// Initialize Google Maps
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 39.8283, lng: -98.5795 }, // Center of US
+    zoom: 4,
+    styles: [
+      {
+        elementType: 'geometry',
+        stylers: [{ color: '#000000' }]
+      },
+      {
+        elementType: 'labels.text.stroke',
+        stylers: [{ color: '#000000' }]
+      },
+      {
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#FFFFFF' }]
+      },
+      {
+        featureType: 'administrative',
+        elementType: 'geometry.stroke',
+        stylers: [{ color: '#333333' }]
+      },
+      {
+        featureType: 'administrative.country',
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#FFFFFF' }]
+      },
+      {
+        featureType: 'administrative.province',
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#E8E9EA' }]
+      },
+      {
+        featureType: 'road',
+        elementType: 'geometry',
+        stylers: [{ color: '#111111' }]
+      },
+      {
+        featureType: 'road.highway',
+        elementType: 'geometry',
+        stylers: [{ color: '#222222' }]
+      },
+      {
+        featureType: 'road.highway',
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#FFFFFF' }]
+      },
+      {
+        featureType: 'water',
+        elementType: 'geometry',
+        stylers: [{ color: '#000000' }]
+      },
+      {
+        featureType: 'water',
+        elementType: 'labels.text.fill',
+        stylers: [{ color: '#9FA0A3' }]
+      }
+    ]
+  });
+
+  geocoder = new google.maps.Geocoder();
+  
+  // Initialize autocomplete for pickup and dropoff inputs
+  const pickupInput = document.getElementById('pickup-input');
+  const dropoffInput = document.getElementById('dropoff-input');
+  
+  // Create autocomplete objects
+  pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput, {
+    types: ['geocode', 'establishment'],
+    componentRestrictions: { country: ['us', 'ca'] }
+  });
+  
+  dropoffAutocomplete = new google.maps.places.Autocomplete(dropoffInput, {
+    types: ['geocode', 'establishment'],
+    componentRestrictions: { country: ['us', 'ca'] }
+  });
+  
+  // Set up autocomplete listeners
+  pickupAutocomplete.addListener('place_changed', function() {
+    const place = pickupAutocomplete.getPlace();
+    if (place.geometry) {
+      pickupInput.setAttribute('data-lat', place.geometry.location.lat());
+      pickupInput.setAttribute('data-lng', place.geometry.location.lng());
+      pickupInput.setAttribute('data-address', place.formatted_address);
+    }
+  });
+  
+  dropoffAutocomplete.addListener('place_changed', function() {
+    const place = dropoffAutocomplete.getPlace();
+    if (place.geometry) {
+      dropoffInput.setAttribute('data-lat', place.geometry.location.lat());
+      dropoffInput.setAttribute('data-lng', place.geometry.location.lng());
+      dropoffInput.setAttribute('data-address', place.formatted_address);
+    }
+  });
+}
+
+function clearLaneDetails() {
+  const laneDetailsPanel = document.getElementById('lane-details-panel');
+  laneDetailsPanel.classList.remove('show');
+  
+  // Clear all selections on map and table
+  clearAllSelections();
+}
+
+function showLaneDetails(opportunity, index) {
+  const laneDetailsPanel = document.getElementById('lane-details-panel');
+  const laneDetailsContent = document.getElementById('lane-details-content');
+  const laneTitle = document.getElementById('lane-title');
+  
+  let detailsHtml = '';
+  let lane = null;
+  
+  // Update title
+  laneTitle.textContent = `${opportunity.type} Lane - ${opportunity.code}`;
+  
+  // Get lane data based on type
+  if (opportunity.type === 'Historical') {
+    lane = historicalLanes.find(l => l['Code'] === opportunity.code);
+    if (lane) {
+      detailsHtml = `
+        <div class="lane-detail-card">
+          <h4>Lane Information</h4>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Type:</span>
+            <span class="lane-detail-value">
+              <span class="lane-type-badge lane-type-historical">${opportunity.type}</span>
+            </span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Customer:</span>
+            <span class="lane-detail-value">${opportunity.customer}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Code:</span>
+            <span class="lane-detail-value">${opportunity.code}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Mode:</span>
+            <span class="lane-detail-value">${lane['Mode'] || 'N/A'}</span>
+          </div>
+        </div>
+        <div class="lane-detail-card">
+          <h4>Route Details</h4>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Pickup:</span>
+            <span class="lane-detail-value">${lane['Pickup City']}, ${lane['Pickup State']}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Dropoff:</span>
+            <span class="lane-detail-value">${lane['Dropoff City']}, ${lane['Dropoff State']}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Equipment:</span>
+            <span class="lane-detail-value">${lane['Equipment Type'] || 'N/A'}</span>
+          </div>
+        </div>
+      `;
+    }
+  } else if (opportunity.type === 'LTL') {
+    lane = warpLtlLanes.find(l => l['Lane_Code'] === opportunity.code);
+    if (lane) {
+      detailsHtml = `
+        <div class="lane-detail-card">
+          <h4>Lane Information</h4>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Type:</span>
+            <span class="lane-detail-value">
+              <span class="lane-type-badge lane-type-ltl">${opportunity.type}</span>
+            </span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Network:</span>
+            <span class="lane-detail-value">${opportunity.customer}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Code:</span>
+            <span class="lane-detail-value">${opportunity.code}</span>
+          </div>
+        </div>
+        <div class="lane-detail-card">
+          <h4>Route Details</h4>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Origin:</span>
+            <span class="lane-detail-value">${lane['Origin_City']}, ${lane['Origin_State']}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Destination:</span>
+            <span class="lane-detail-value">${lane['Destination_City']}, ${lane['Destination_State']}</span>
+          </div>
+        </div>
+      `;
+    }
+  } else if (opportunity.type === 'Dedicated') {
+    lane = dedicatedLanes.find(l => l['Lane_ID'] === opportunity.code);
+    if (lane) {
+      detailsHtml = `
+        <div class="lane-detail-card">
+          <h4>Lane Information</h4>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Type:</span>
+            <span class="lane-detail-value">
+              <span class="lane-type-badge lane-type-dedicated">${opportunity.type}</span>
+            </span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Service:</span>
+            <span class="lane-detail-value">${opportunity.customer}</span>
+          </div>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Lane ID:</span>
+            <span class="lane-detail-value">${opportunity.code}</span>
+          </div>
+        </div>
+        <div class="lane-detail-card">
+          <h4>Route Details</h4>
+          <div class="lane-detail-item">
+            <span class="lane-detail-label">Description:</span>
+            <span class="lane-detail-value">${lane['Route_Description']}</span>
+          </div>
+        </div>
+      `;
+    }
+  }
+  
+  laneDetailsContent.innerHTML = detailsHtml;
+  laneDetailsPanel.classList.add('show');
+}
+
+// Panel Management Functions
+function togglePanel() {
+  const panel = document.getElementById('bottom-panel');
+  const toggleBtn = document.getElementById('toggle-btn');
+  
+  isPanelMinimized = !isPanelMinimized;
+  
+  if (isPanelMinimized) {
+    panel.classList.add('minimized');
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+  } else {
+    panel.classList.remove('minimized');
+    toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+  }
+}
+
+function closePanel() {
+  const panel = document.getElementById('bottom-panel');
+  panel.classList.remove('show');
+  clearAllSelections();
+}
+
+function showPanel() {
+  const panel = document.getElementById('bottom-panel');
+  panel.classList.add('show');
+  isPanelMinimized = false;
+  panel.classList.remove('minimized');
+  document.getElementById('toggle-btn').innerHTML = '<i class="fas fa-chevron-down"></i>';
+}
+
+// Lane Selection Functions
+function selectLane(index) {
+  const opportunity = currentOpportunities[index];
+  const row = document.querySelector(`tr[data-index="${index}"]`);
+  
+  // Clear all previous selections first
+  clearAllSelections();
+  
+  // Select this lane
+  selectedLanes.add(index);
+  row.classList.add('selected');
+  addLaneToMap(opportunity, index);
+}
+
+function addLaneToMap(opportunity, index) {
+  let pickupLat, pickupLng, dropoffLat, dropoffLng;
+  
+  // Get coordinates based on lane type
+  if (opportunity.type === 'Historical') {
+    const lane = historicalLanes.find(l => l['Code'] === opportunity.code);
+    if (lane) {
+      pickupLat = parseFloat(lane['Pickup_Latitude']);
+      pickupLng = parseFloat(lane['Pickup_Longitude']);
+      dropoffLat = parseFloat(lane['Dropoff_Latitude']);
+      dropoffLng = parseFloat(lane['Dropoff_Longitude']);
+    }
+  } else if (opportunity.type === 'LTL') {
+    const lane = warpLtlLanes.find(l => l['Lane_Code'] === opportunity.code);
+    if (lane) {
+      pickupLat = parseFloat(lane['Origin_Latitude']);
+      pickupLng = parseFloat(lane['Origin_Longitude']);
+      dropoffLat = parseFloat(lane['Destination_Latitude']);
+      dropoffLng = parseFloat(lane['Destination_Longitude']);
+    }
+  } else if (opportunity.type === 'Dedicated') {
+    const lane = dedicatedLanes.find(l => l['Lane_ID'] === opportunity.code);
+    if (lane) {
+      pickupLat = parseFloat(lane['Pickup_Latitude']);
+      pickupLng = parseFloat(lane['Pickup_Longitude']);
+      dropoffLat = parseFloat(lane['Dropoff_Latitude']);
+      dropoffLng = parseFloat(lane['Dropoff_Longitude']);
+    }
+  }
+  
+  if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+    // Add pickup marker
+    const pickupMarker = new google.maps.Marker({
+      position: { lat: pickupLat, lng: pickupLng },
+      map: map,
+      title: `${opportunity.type} Lane Pickup: ${opportunity.customer}`,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 4,
+        fillColor: getColorForLaneType(opportunity.type),
+        fillOpacity: 0.8,
+        strokeColor: '#ffffff',
+        strokeWeight: 1
+      }
+    });
+    
+    // Add dropoff marker
+    const dropoffMarker = new google.maps.Marker({
+      position: { lat: dropoffLat, lng: dropoffLng },
+      map: map,
+      title: `${opportunity.type} Lane Dropoff: ${opportunity.customer}`,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 4,
+        fillColor: getColorForLaneType(opportunity.type),
+        fillOpacity: 0.8,
+        strokeColor: '#ffffff',
+        strokeWeight: 1
+      }
+    });
+    
+    // Add lane line
+    const laneLine = new google.maps.Polyline({
+      path: [
+        { lat: pickupLat, lng: pickupLng },
+        { lat: dropoffLat, lng: dropoffLng }
+      ],
+      geodesic: true,
+      strokeColor: getColorForLaneType(opportunity.type),
+      strokeOpacity: 0.7,
+      strokeWeight: 2,
+      map: map
+    });
+    
+    // Add click listeners to show lane details when clicking on the route
+    const showDetailsHandler = () => {
+      showLaneDetails(opportunity, index);
+    };
+    
+    laneLine.addListener('click', showDetailsHandler);
+    pickupMarker.addListener('click', showDetailsHandler);
+    dropoffMarker.addListener('click', showDetailsHandler);
+    
+    // Store references with index
+    selectedLaneMarkers.push({ index, markers: [pickupMarker, dropoffMarker] });
+    selectedLaneLines.push({ index, line: laneLine });
+  }
+}
+
+function removeLaneFromMap(index) {
+  // Remove markers
+  const markerEntry = selectedLaneMarkers.find(entry => entry.index === index);
+  if (markerEntry) {
+    markerEntry.markers.forEach(marker => marker.setMap(null));
+    selectedLaneMarkers = selectedLaneMarkers.filter(entry => entry.index !== index);
+  }
+  
+  // Remove lines
+  const lineEntry = selectedLaneLines.find(entry => entry.index === index);
+  if (lineEntry) {
+    lineEntry.line.setMap(null);
+    selectedLaneLines = selectedLaneLines.filter(entry => entry.index !== index);
+  }
+}
+
+function clearAllSelections() {
+  // Clear all selected lanes from map
+  selectedLaneMarkers.forEach(entry => {
+    entry.markers.forEach(marker => marker.setMap(null));
+  });
+  selectedLaneLines.forEach(entry => {
+    entry.line.setMap(null);
+  });
+  
+  selectedLaneMarkers = [];
+  selectedLaneLines = [];
+  selectedLanes.clear();
+  
+  // Remove selection styling from table rows
+  document.querySelectorAll('.opportunities-table tr.selected').forEach(row => {
+    row.classList.remove('selected');
+  });
+  
+  // Hide lane details panel
+  const laneDetailsPanel = document.getElementById('lane-details-panel');
+  if (laneDetailsPanel) {
+    laneDetailsPanel.classList.remove('show');
+  }
+}
+
+function getColorForLaneType(type) {
+  switch (type) {
+    case 'Historical': return '#ef4444';
+    case 'LTL': return '#8b5cf6';
+    case 'Dedicated': return '#3b82f6';
+    default: return '#6b7280';
+  }
+}
+
+// Workflow Functions
+function proceedToAnalysis() {
+  document.getElementById('step-upload').classList.remove('active');
+  document.getElementById('step-analysis').classList.add('active');
+}
+
+function goBackToUpload() {
+  document.getElementById('step-analysis').classList.remove('active');
+  document.getElementById('step-upload').classList.add('active');
+}
+
+function checkAllFilesUploaded() {
+  // Only check mandatory files: historical, dedicated, ltl, crossdocks
+  const mandatoryFiles = ['historical', 'dedicated', 'ltl', 'crossdocks'];
+  const allMandatoryUploaded = mandatoryFiles.every(fileType => filesUploaded[fileType]);
+  const proceedBtn = document.getElementById('proceed-btn');
+  
+  if (allMandatoryUploaded) {
+    proceedBtn.style.display = 'block';
+  } else {
+    proceedBtn.style.display = 'none';
+  }
+}
+
+function updateProgress(fileType, status) {
+  const progressElement = document.getElementById(`${fileType}-progress`);
+  if (status) {
+    progressElement.textContent = 'Complete';
+    progressElement.classList.remove('pending');
+    progressElement.classList.add('complete');
+  } else {
+    if (fileType === 'facilities') {
+      progressElement.textContent = 'Optional';
+      progressElement.classList.remove('complete');
+      progressElement.classList.add('pending');
+    } else {
+      progressElement.textContent = 'Required';
+      progressElement.classList.remove('complete');
+      progressElement.classList.add('pending');
+    }
+  }
+}
+
+// Utility Functions
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 3959; // Radius of Earth in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function geocodeAddress(address) {
+  return new Promise((resolve, reject) => {
+    geocoder.geocode({ address: address }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        resolve({
+          address: results[0].formatted_address,
+          lat: results[0].geometry.location.lat(),
+          lng: results[0].geometry.location.lng()
+        });
+      } else {
+        reject(status);
+      }
+    });
+  });
+}
+
+function addMarker(position, title, color) {
+  const marker = new google.maps.Marker({
+    position: position,
+    map: map,
+    title: title,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 5,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: 1
+    }
+  });
+
+  markers.push(marker);
+  return marker;
+}
+
+function clearMarkers() {
+  markers.forEach(marker => marker.setMap(null));
+  markers = [];
+}
+
+function clearCurrentSearchElements() {
+  currentSearchMarkers.forEach(marker => marker.setMap(null));
+  currentSearchMarkers = [];
+  currentSearchLines.forEach(line => line.setMap(null));
+  currentSearchLines = [];
+}
+
+function addSearchMarker(position, title, color) {
+  const marker = new google.maps.Marker({
+    position: position,
+    map: map,
+    title: title,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 6,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: 2
+    }
+  });
+
+  currentSearchMarkers.push(marker);
+  return marker;
+}
+
+function addCrossdocksToMap() {
+  warpCrossdocks.forEach(crossdock => {
+    // Handle both lowercase (sample data) and capitalized (CSV upload) field names
+    const lat = parseFloat(crossdock.Latitude || crossdock.latitude);
+    const lng = parseFloat(crossdock.Longitude || crossdock.longitude);
+    const name = crossdock.Name || crossdock.name;
+    const type = crossdock.Type || crossdock.type;
+    const address = crossdock.Address || crossdock.address;
+    const city = crossdock.City || crossdock.city;
+    const state = crossdock.State || crossdock.state;
+    const zipcode = crossdock.Zipcode || crossdock.zipcode;
+
+    // Skip if we don't have valid coordinates
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+      console.warn('Invalid coordinates for crossdock:', crossdock);
+      return;
+    }
+
+    const marker = new google.maps.Marker({
+      position: { lat: lat, lng: lng },
+      map: map,
+      title: name,
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 5,
+        fillColor: '#FFFFFF',
+        fillOpacity: 1,
+        strokeColor: '#000000',
+        strokeWeight: 1
+      }
+    });
+
+    const infoWindow = new google.maps.InfoWindow({
+      content: `
+        <div style="background: #000000; color: #FFFFFF; padding: 12px; border-radius: 8px; border: 2px solid #FFFFFF;">
+          <h4 style="color: #FFFFFF; margin: 0 0 8px 0; font-size: 14px; font-weight: 700;">${name}</h4>
+          <p style="color: #E8E9EA; margin: 4px 0; font-size: 12px;"><strong>Type:</strong> ${type}</p>
+          <p style="color: #E8E9EA; margin: 4px 0; font-size: 12px;"><strong>Address:</strong> ${address}</p>
+          <p style="color: #E8E9EA; margin: 4px 0; font-size: 12px;"><strong>City:</strong> ${city}, ${state} ${zipcode}</p>
+        </div>
+      `
+    });
+
+    marker.addListener('click', () => {
+      infoWindow.open(map, marker);
+    });
+  });
+}
+
+// Main Analysis Function
+async function findOpportunities() {
+  const pickupInput = document.getElementById('pickup-input');
+  const dropoffInput = document.getElementById('dropoff-input');
+  
+  const pickupText = pickupInput.value.trim();
+  const dropoffText = dropoffInput.value.trim();
+
+  if (!pickupText || !dropoffText) {
+    alert('Please enter both pickup and dropoff locations');
+    return;
+  }
+
+  const panelContent = document.getElementById('panel-content');
+  
+  showPanel();
+  panelContent.innerHTML = '<div class="loading"><div class="spinner"></div><div>Analyzing route density opportunities...</div></div>';
+
+  try {
+    let pickupLocation, dropoffLocation;
+    
+    if (pickupInput.getAttribute('data-lat') && pickupInput.getAttribute('data-lng')) {
+      pickupLocation = {
+        address: pickupInput.getAttribute('data-address'),
+        lat: parseFloat(pickupInput.getAttribute('data-lat')),
+        lng: parseFloat(pickupInput.getAttribute('data-lng'))
+      };
+    } else {
+      pickupLocation = await geocodeAddress(pickupText);
+    }
+    
+    if (dropoffInput.getAttribute('data-lat') && dropoffInput.getAttribute('data-lng')) {
+      dropoffLocation = {
+        address: dropoffInput.getAttribute('data-address'),
+        lat: parseFloat(dropoffInput.getAttribute('data-lat')),
+        lng: parseFloat(dropoffInput.getAttribute('data-lng'))
+      };
+    } else {
+      dropoffLocation = await geocodeAddress(dropoffText);
+    }
+
+    clearCurrentSearchElements();
+    clearAllSelections();
+
+    addSearchMarker(
+      { lat: pickupLocation.lat, lng: pickupLocation.lng },
+      'Pickup: ' + pickupLocation.address,
+      '#22c55e'
+    );
+
+    addSearchMarker(
+      { lat: dropoffLocation.lat, lng: dropoffLocation.lng },
+      'Dropoff: ' + dropoffLocation.address,
+      '#ef4444'
+    );
+
+    const routeLine = new google.maps.Polyline({
+      path: [
+        { lat: pickupLocation.lat, lng: pickupLocation.lng },
+        { lat: dropoffLocation.lat, lng: dropoffLocation.lng }
+      ],
+      geodesic: true,
+      strokeColor: '#3b82f6',
+      strokeOpacity: 1.0,
+      strokeWeight: 2,
+      map: map
+    });
+
+    currentSearchLines.push(routeLine);
+
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend({ lat: pickupLocation.lat, lng: pickupLocation.lng });
+    bounds.extend({ lat: dropoffLocation.lat, lng: dropoffLocation.lng });
+    map.fitBounds(bounds);
+
+    const opportunities = await analyzeCoMinglingOpportunities(pickupLocation, dropoffLocation);
+    currentOpportunities = opportunities;
+    displayOpportunities(opportunities, pickupLocation, dropoffLocation);
+
+  } catch (error) {
+    console.error('Error:', error);
+    panelContent.innerHTML = '<div class="no-results">Error analyzing route. Please verify your addresses and try again.</div>';
+  }
+}
+
+// Co-Mingling Analysis
+async function analyzeCoMinglingOpportunities(pickup, dropoff) {
+  const opportunities = [];
+  const RADIUS_MILES = 20;
+
+  // Check Historical Lanes
+  for (const lane of historicalLanes) {
+    try {
+      const pickupLat = parseFloat(lane['Pickup_Latitude']);
+      const pickupLng = parseFloat(lane['Pickup_Longitude']);
+      const dropoffLat = parseFloat(lane['Dropoff_Latitude']);
+      const dropoffLng = parseFloat(lane['Dropoff_Longitude']);
+      
+      if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+        const pickupDistance = calculateDistance(pickup.lat, pickup.lng, pickupLat, pickupLng);
+        const dropoffDistance = calculateDistance(dropoff.lat, dropoff.lng, dropoffLat, dropoffLng);
+        
+        if (pickupDistance <= RADIUS_MILES && dropoffDistance <= RADIUS_MILES) {
+          opportunities.push({
+            type: 'Historical',
+            customer: lane['Customer Name'],
+            code: lane['Code'] || '',
+            route: `${lane['Pickup City']}, ${lane['Pickup State']} → ${lane['Dropoff City']}, ${lane['Dropoff State']}`,
+            distance: pickupDistance + dropoffDistance
+          });
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  // Check WARP LTL Lanes
+  for (const lane of warpLtlLanes) {
+    try {
+      const originLat = parseFloat(lane['Origin_Latitude']);
+      const originLng = parseFloat(lane['Origin_Longitude']);
+      const destLat = parseFloat(lane['Destination_Latitude']);
+      const destLng = parseFloat(lane['Destination_Longitude']);
+      
+      if (originLat && originLng && destLat && destLng) {
+        const pickupDistance = calculateDistance(pickup.lat, pickup.lng, originLat, originLng);
+        const dropoffDistance = calculateDistance(dropoff.lat, dropoff.lng, destLat, destLng);
+        
+        if (pickupDistance <= RADIUS_MILES && dropoffDistance <= RADIUS_MILES) {
+          opportunities.push({
+            type: 'LTL',
+            customer: 'WARP Network',
+            code: lane['Lane_Code'] || '',
+            route: `${lane['Origin_City']}, ${lane['Origin_State']} → ${lane['Destination_City']}, ${lane['Destination_State']}`,
+            distance: pickupDistance + dropoffDistance
+          });
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  // Check Dedicated Lanes
+  for (const lane of dedicatedLanes) {
+    try {
+      const pickupLat = parseFloat(lane['Pickup_Latitude']);
+      const pickupLng = parseFloat(lane['Pickup_Longitude']);
+      const dropoffLat = parseFloat(lane['Dropoff_Latitude']);
+      const dropoffLng = parseFloat(lane['Dropoff_Longitude']);
+      
+      if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+        const pickupDistance = calculateDistance(pickup.lat, pickup.lng, pickupLat, pickupLng);
+        const dropoffDistance = calculateDistance(dropoff.lat, dropoff.lng, dropoffLat, dropoffLng);
+        
+        if (pickupDistance <= RADIUS_MILES && dropoffDistance <= RADIUS_MILES) {
+          opportunities.push({
+            type: 'Dedicated',
+            customer: 'Dedicated Route',
+            code: lane['Lane_ID'] || '',
+            route: lane['Route_Description'],
+            distance: pickupDistance + dropoffDistance
+          });
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  opportunities.sort((a, b) => a.distance - b.distance);
+  return opportunities;
+}
+
+// Display Results as Table
+function displayOpportunities(opportunities, pickup, dropoff) {
+  const panelContent = document.getElementById('panel-content');
+  const resultsCount = document.getElementById('results-count');
+
+  if (opportunities.length === 0) {
+    panelContent.innerHTML = `
+      <div class="no-results">
+        <i class="fas fa-search" style="font-size: 2rem; margin-bottom: 1rem; color: #64748b;"></i>
+        <h3>No Density Opportunities Found</h3>
+        <p>No matching routes found within 20 miles of your specified lane.</p>
+        <p>Consider expanding your search radius or exploring WARP crossdock solutions.</p>
+      </div>
+    `;
+    resultsCount.textContent = '';
+    return;
+  }
+
+  resultsCount.textContent = `(${opportunities.length} found)`;
+
+  let html = `
+    <div style="margin-bottom: 1rem;">
+      <button class="btn clear-selections-btn" onclick="clearAllSelections()">
+        <i class="fas fa-times"></i> Clear All Selections
+      </button>
+      <small style="display: block; margin-top: 0.5rem; color: var(--text-muted);">
+        Click on any row to visualize the lane on the map
+      </small>
+    </div>
+    <table class="opportunities-table">
+      <thead>
+        <tr>
+          <th>Lane Type</th>
+          <th>Customer</th>
+          <th>Code</th>
+          <th>Route</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  opportunities.forEach((opp, index) => {
+    const laneTypeClass = `lane-type-${opp.type.toLowerCase()}`;
+    html += `
+      <tr data-index="${index}" onclick="selectLane(${index})">
+        <td><span class="lane-type-badge ${laneTypeClass}">${opp.type}</span></td>
+        <td>${opp.customer}</td>
+        <td>${opp.code}</td>
+        <td>${opp.route}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+      </tbody>
+    </table>
+  `;
+
+  panelContent.innerHTML = html;
+}
+
+// File Upload Handlers
+function setupFileUploads() {
+  const uploads = [
+    { area: 'facilities-upload-area', input: 'facilities-upload', handler: handleFacilitiesFile, type: 'facilities' },
+    { area: 'historical-upload-area', input: 'historical-upload', handler: handleHistoricalFile, type: 'historical' },
+    { area: 'dedicated-upload-area', input: 'dedicated-upload', handler: handleDedicatedFile, type: 'dedicated' },
+    { area: 'ltl-upload-area', input: 'ltl-upload', handler: handleLtlFile, type: 'ltl' },
+    { area: 'crossdocks-upload-area', input: 'crossdocks-upload', handler: handleCrossdocksFile, type: 'crossdocks' }
+  ];
+
+  uploads.forEach(({ area, input, handler, type }) => {
+    const uploadArea = document.getElementById(area);
+    const fileInput = document.getElementById(input);
+
+    if (uploadArea && fileInput) {
+      uploadArea.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handler(e.target.files[0], type);
+        }
+      });
+
+      uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+      });
+
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+      });
+
+      uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          handler(e.dataTransfer.files[0], type);
+        }
+      });
+    }
+  });
+}
+
+function handleFacilitiesFile(file, type) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      customerFacilities = results.data;
+      document.getElementById('facilities-status').style.display = 'block';
+      document.getElementById('facilities-status').textContent = `✅ ${customerFacilities.length} facilities loaded`;
+      filesUploaded.facilities = true;
+      updateProgress(type, true);
+      checkAllFilesUploaded();
+      addFacilitiesToMap();
+    },
+    error: (error) => {
+      console.error('Error parsing facilities file:', error);
+      alert('Error parsing CSV file. Please check the format.');
+    }
+  });
+}
+
+function handleHistoricalFile(file, type) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      historicalLanes = results.data;
+      document.getElementById('historical-status').style.display = 'block';
+      document.getElementById('historical-status').textContent = `✅ ${historicalLanes.length} lanes loaded`;
+      filesUploaded.historical = true;
+      updateProgress(type, true);
+      checkAllFilesUploaded();
+    },
+    error: (error) => {
+      console.error('Error parsing historical lanes file:', error);
+      alert('Error parsing CSV file. Please check the format.');
+    }
+  });
+}
+
+function handleDedicatedFile(file, type) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      dedicatedLanes = results.data;
+      document.getElementById('dedicated-status').style.display = 'block';
+      document.getElementById('dedicated-status').textContent = `✅ ${dedicatedLanes.length} lanes loaded`;
+      filesUploaded.dedicated = true;
+      updateProgress(type, true);
+      checkAllFilesUploaded();
+    },
+    error: (error) => {
+      console.error('Error parsing dedicated lanes file:', error);
+      alert('Error parsing CSV file. Please check the format.');
+    }
+  });
+}
+
+function handleLtlFile(file, type) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      warpLtlLanes = results.data;
+      document.getElementById('ltl-status').style.display = 'block';
+      document.getElementById('ltl-status').textContent = `✅ ${warpLtlLanes.length} lanes loaded`;
+      filesUploaded.ltl = true;
+      updateProgress(type, true);
+      checkAllFilesUploaded();
+    },
+    error: (error) => {
+      console.error('Error parsing LTL lanes file:', error);
+      alert('Error parsing CSV file. Please check the format.');
+    }
+  });
+}
+
+function handleCrossdocksFile(file, type) {
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      warpCrossdocks = results.data;
+      document.getElementById('crossdocks-status').style.display = 'block';
+      document.getElementById('crossdocks-status').textContent = `✅ ${warpCrossdocks.length} crossdocks loaded`;
+      filesUploaded.crossdocks = true;
+      updateProgress(type, true);
+      checkAllFilesUploaded();
+      addCrossdocksToMap();
+    },
+    error: (error) => {
+      console.error('Error parsing crossdocks file:', error);
+      alert('Error parsing CSV file. Please check the format.');
+    }
+  });
+}
+
+function addFacilitiesToMap() {
+  customerFacilities.forEach(facility => {
+    if (facility.Latitude && facility.Longitude) {
+      const marker = new google.maps.Marker({
+        position: { lat: parseFloat(facility.Latitude), lng: parseFloat(facility.Longitude) },
+        map: map,
+        title: `${facility.Customer_Name} - ${facility.Facility_Type}`,
+        icon: {
+          path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+          scale: 3,
+          fillColor: facility.Facility_Type === 'FC' ? '#3b82f6' : '#8b5cf6',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 1
+        }
+      });
+
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="background: #000000; color: #FFFFFF; padding: 12px; border-radius: 8px; border: 2px solid #FFFFFF;">
+            <h4 style="color: #FFFFFF; margin: 0 0 8px 0; font-size: 14px; font-weight: 700;">${facility.Customer_Name}</h4>
+            <p style="color: #E8E9EA; margin: 4px 0; font-size: 12px;"><strong>${facility.Facility_Type}:</strong> ${facility.Name}</p>
+            <p style="color: #E8E9EA; margin: 4px 0; font-size: 12px;">${facility.Address}</p>
+          </div>
+        `
+      });
+
+      marker.addListener('click', () => {
+        infoWindow.open(map, marker);
+      });
+    }
+  });
+}
+
+function loadSampleData() {
+  customerFacilities = [...sampleCustomerFacilities];
+  historicalLanes = [...sampleHistoricalLanes];
+  warpLtlLanes = [...sampleWarpLtlLanes];
+  dedicatedLanes = [...sampleDedicatedLanes];
+  warpCrossdocks = [...sampleWarpCrossdocks];
+  
+  // Update all file upload status (facilities is optional, others are required)
+  Object.keys(filesUploaded).forEach(key => {
+    filesUploaded[key] = true;
+    updateProgress(key, true);
+  });
+  
+  // Update status displays
+  document.getElementById('facilities-status').style.display = 'block';
+  document.getElementById('facilities-status').textContent = `✅ ${customerFacilities.length} facilities loaded`;
+  document.getElementById('historical-status').style.display = 'block';
+  document.getElementById('historical-status').textContent = `✅ ${historicalLanes.length} lanes loaded`;
+  document.getElementById('ltl-status').style.display = 'block';
+  document.getElementById('ltl-status').textContent = `✅ ${warpLtlLanes.length} lanes loaded`;
+  document.getElementById('dedicated-status').style.display = 'block';
+  document.getElementById('dedicated-status').textContent = `✅ ${dedicatedLanes.length} lanes loaded`;
+  document.getElementById('crossdocks-status').style.display = 'block';
+  document.getElementById('crossdocks-status').textContent = `✅ ${warpCrossdocks.length} crossdocks loaded`;
+  
+  checkAllFilesUploaded();
+  addFacilitiesToMap();
+  addCrossdocksToMap();
+  
+  console.log('Demo data loaded successfully!');
+}
+
+// Initialize everything
+document.addEventListener('DOMContentLoaded', () => {
+  setupFileUploads();
+});
+
+// Load Google Maps script
+function loadGoogleMaps() {
+  const script = document.createElement('script');
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${CONFIG.GOOGLE_MAPS_API_KEY}&callback=initMap&libraries=places,geometry`;
+  script.async = true;
+  script.defer = true;
+  script.onerror = () => {
+    console.error('Failed to load Google Maps API');
+    alert('Failed to load Google Maps. Please check your API key and network connection.');
+  };
+  document.head.appendChild(script);
+}
+
+// Initialize when page loads
+window.addEventListener('load', () => {
+  loadGoogleMaps();
+});
+</script>
+
+</body>
+</html>
